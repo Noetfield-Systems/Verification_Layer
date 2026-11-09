@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
   const outcome = await db.$transaction(async (tx) => {
     // A lock is automatically released on commit / rollback. Parameterized SQL
     // prevents injection. This API deliberately requires PostgreSQL in production.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`
+    await tx.$queryRaw`SELECT 1::int AS locked FROM (SELECT pg_advisory_xact_lock(hashtext(${projectId}))) AS held_lock`
     const existing = await tx.verification.findUnique({
       where: { verdictHash: result.verdictHash }, include: { receipt: true },
     })
