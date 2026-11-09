@@ -1,0 +1,55 @@
+name: Production live smoke — first deploy verification
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/live-smoke.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-endpoints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Verify production HTTPS, health, dashboard and authorization
+        env:
+          BASE: https://verification-layer-api-production.up.railway.app
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            status=$(curl -sS --max-time 15 -o /tmp/verify-health -w '%{http_code}' "$BASE/api/health" || true)
+            if [[ "$status" == "200" ]]; then break; fi
+            sleep 4
+          done
+          test "$status" = 200 || { echo "Production health HTTP $status"; cat /tmp/verify-health || true; exit 1; }
+          echo 'PASS: public HTTPS + database-backed health 200'
+          status=$(curl -sS --max-time 20 -o /tmp/verify-home -w '%{http_code}' "$BASE/")
+          test "$status" = 200 || { echo "Landing page HTTP $status"; exit 1; }
+          echo 'PASS: production landing page 200'
+          status=$(curl -sS --max-time 15 -o /tmp/verify-auth -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"artifact":"a"}' "$BASE/api/v1/verify")
+          test "$status" = 401 || { echo "Unauthenticated verification unexpectedly returned HTTP $status"; exit 1; }
+          echo 'PASS: anonymous verification denied 401'
+          status=$(curl -sS --max-time 15 -o /tmp/verify-invalid -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"email":"not-an-email"}' "$BASE/api/signup")
+          test "$status" = 400 || { echo "Invalid signup unexpectedly returned HTTP $status"; exit 1; }
+          echo 'PASS: signup rejects invalid email'
+      - name: Verify real email provider accepts a company-owned test signup
+        env:
+          BASE: https://verification-layer-api-production.up.railway.app
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl -sS --max-time 30 -o /tmp/verify-email -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"email":"operations@noetfield.com","companyName":"Noetfield Production Smoke"}' "$BASE/api/signup")
+          if [[ "$status" != 202 ]]; then
+            echo "Production email OTP request failed: HTTP $status"
+            python3 - <<'PY'
+          import json
+          try:
+              d=json.load(open('/tmp/verify-email'))
+              print("Error code:",d.get('error',{}).get('code','unknown'))
+          except Exception:
+              print('Unparseable response')
+          PY
+            exit 1
+          fi
+          echo 'PASS: Resend accepted real OTP delivery request (mailbox receipt not tested)'
