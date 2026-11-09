@@ -1,6 +1,6 @@
 // Sina QA worker: bounded, real-model changes; never simulated fixes or direct production writes.
 import {readFileSync,writeFileSync} from 'node:fs'
-import {execFileSync} from 'node:child_process'
+import {execFileSync,spawnSync} from 'node:child_process'
 const repo=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN,n=Number(process.env.ISSUE_NUMBER)
 if(!repo||!token||!Number.isSafeInteger(n)||n<1)throw Error('Missing GitHub identity or issue')
 const headers={authorization:'Bearer '+token,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28'}
@@ -47,8 +47,14 @@ if(useDeepSeek){
  if(!data.ok||!answer)throw Error('DeepSeek model invocation did not return content')
 }else{
  const prompt=instructions+'\nIssue: '+issue.title+'\nEvidence:\n'+(issue.body||'').slice(0,2200)+'\nFILE: '+file+'\n'+before
- answer=execFileSync('copilot',['-p',prompt,'-s','--no-ask-user','--model=auto','--no-custom-instructions','--disable-builtin-mcps','--deny-tool=shell,write,url,memory'],{encoding:'utf8',timeout:90000,maxBuffer:500000}).trim()
- if(!answer)throw Error('Copilot CLI produced no answer')
+ const cp=spawnSync('copilot',['-p',prompt,'-s','--no-ask-user','--model=auto','--no-custom-instructions','--disable-builtin-mcps','--deny-tool=shell,write,url,memory'],{encoding:'utf8',timeout:90000,maxBuffer:500000})
+ if(cp.error || cp.status!==0){
+  const reason=/Access denied by policy settings/i.test(cp.stderr||'')?'COPILOT_POLICY_DENIED':(cp.error?.code||'COPILOT_EXIT_'+cp.status)
+  await comment('BLOCKED/PROVIDER: '+reason+' in real Actions run '+process.env.GITHUB_RUN_ID+'. No model repair/PR/deploy. Configure an authorized model provider and re-trigger. Issue remains OPEN.')
+  throw Error('Provider blocked: '+reason)
+ }
+ answer=(cp.stdout||'').trim()
+ if(!answer){await comment('BLOCKED/MODEL_OUTPUT: Copilot returned no text. Issue OPEN.');throw Error('Empty Copilot response')}
 }
 let jsonText=answer.trim()
 if(jsonText.charCodeAt(0)===96)jsonText=jsonText.split('\n').slice(1,-1).join('\n')
