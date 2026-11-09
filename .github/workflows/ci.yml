@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -47,5 +48,10 @@ jobs:
         run: bun run build
       - name: Two-tenant HTTP end-to-end test
         run: node tests/e2e-api.mjs
+      - name: Sina QA automations syntax
+        run: |
+          node --check scripts/sina-qa-watch.mjs
+          node --check scripts/sina-qa-repair.mjs
+          node --check scripts/sina-qa-promote.mjs
       - name: Docker image production build
         run: docker build -t verification-layer:ci .
