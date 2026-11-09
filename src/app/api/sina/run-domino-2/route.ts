@@ -8,7 +8,7 @@
  * submits, verifies, issues a receipt, gets an independent attestation,
  * records state, and selects the next action.
  *
- * Body: { dominoRun?: number (default 2), maxSteps?: number, projectId?: string }
+ * Body: { dominoRun?: number (default 2), maxCandidates?: number, projectId?: string }
  * Returns: the full step trace + receipts + attestations + next action.
  */
 
@@ -23,7 +23,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   const denied = requireSinaOperator(req)
   if (denied) return denied
-  let body: { dominoRun?: number; maxSteps?: number; projectId?: string } = {}
+  let body: { dominoRun?: number; maxCandidates?: number; projectId?: string } = {}
   try {
     body = await req.json()
   } catch {
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   }
   const result = await runDomino({
     dominoRun: body.dominoRun ?? 2,
-    maxSteps: body.maxSteps,
+    maxCandidates: body.maxCandidates,
     projectId,
   })
   return NextResponse.json(result, { status: 200 })
