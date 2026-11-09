@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node-only fixture transpilation harness intentionally uses require(). */
 /* Dependency-minimal deterministic engine regression check.
  * bun/npm install first: typescript is a devDependency.
  */
