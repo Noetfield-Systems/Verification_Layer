@@ -1,0 +1,27 @@
+name: Sina QA - verify, promote, recheck, close
+on:
+  workflow_run:
+    workflows: ["Verification Layer — Build, Security & E2E"]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+concurrency:
+  group: sina-qa-promote
+  cancel-in-progress: false
+jobs:
+  independent-gate:
+    if: startsWith(github.event.workflow_run.head_branch, 'sina/repair-issue-') && github.event.workflow_run.event == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      SINA_QA_AUTO_PROMOTE_UI: ${{ vars.SINA_QA_AUTO_PROMOTE_UI }}
+      QA_BASE_URL: https://verification-layer-api-production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Verify exact PR SHA and diff; gated merge, deployed revision, independent live recheck and issue close
+        run: node scripts/sina-qa-promote.mjs
