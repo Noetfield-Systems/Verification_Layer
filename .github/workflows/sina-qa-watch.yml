@@ -1,0 +1,27 @@
+name: Sina QA - watch
+on:
+  schedule:
+    - cron: "11 * * * *"
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Verification Layer — Build, Security & E2E"]
+    types: [completed]
+permissions:
+  contents: read
+  issues: write
+  actions: write
+concurrency:
+  group: sina-qa-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      QA_BASE_URL: https://verification-layer-api-production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+      - name: QA -> issue -> repair dispatch
+        run: node scripts/sina-qa-watch.mjs

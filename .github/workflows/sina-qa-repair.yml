@@ -1,0 +1,36 @@
+name: Sina QA - real-model repair
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Open QA Issue"
+        required: true
+        type: string
+  issues:
+    types: [opened]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+concurrency:
+  group: sina-qa-repair-${{ github.event.inputs.issue_number || github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  repair:
+    if: github.event_name == 'workflow_dispatch' || (startsWith(github.event.issue.title, '[SINA-QA]') && (github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      ISSUE_NUMBER: ${{ github.event.inputs.issue_number || github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Propose a bounded real-model fix and dispatch independent CI
+        run: node scripts/sina-qa-repair.mjs
