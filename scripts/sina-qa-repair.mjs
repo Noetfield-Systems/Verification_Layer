@@ -13,6 +13,10 @@ async function api(path,method='GET',body){
 async function comment(s){return api('/issues/'+n+'/comments','POST',{body:s.slice(0,3500)})}
 function git(...args){return execFileSync('git',args,{encoding:'utf8',timeout:30000}).trim()}
 const issue=await api('/issues/'+n)
+if(process.env.GITHUB_EVENT_NAME==='issues'&&!['OWNER','MEMBER','COLLABORATOR'].includes(issue.author_association)){
+ console.log('Untrusted issue author association; no model or writes')
+ process.exit(0)
+}
 if(issue.state!=='open'||!issue.title.startsWith('[SINA-QA]'))throw Error('Issue not open/qualified')
 const prs=await api('/pulls?state=open&per_page=100')
 const old=prs.find(x=>x.title.startsWith('[SINA-QA #'+n+']'))

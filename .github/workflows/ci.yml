@@ -48,6 +48,9 @@ jobs:
         run: bun run build
       - name: Two-tenant HTTP end-to-end test
         run: node tests/e2e-api.mjs
+      - name: Sina QA independent regression for issue #2 repair candidates
+        if: startsWith(github.ref_name, 'sina/repair-issue-2-') || startsWith(github.head_ref, 'sina/repair-issue-2-')
+        run: bun test tests/qa-relative-time.test.ts
       - name: Sina QA automations syntax
         run: |
           node --check scripts/sina-qa-watch.mjs
