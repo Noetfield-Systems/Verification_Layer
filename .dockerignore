@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules
+.next
+out
+coverage
+*.log
+db
+.zscripts
+agent-ctx
+*.tar
+*.tar.gz

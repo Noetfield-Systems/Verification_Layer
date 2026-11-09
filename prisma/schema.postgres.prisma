@@ -1,0 +1,216 @@
+// Noetfield Verification Layer — Prisma schema
+// Production target: Supabase PostgreSQL. Sandbox uses SQLite for local dev.
+// The schema is compatible with both — swap the datasource provider to
+// "postgresql" and set DATABASE_URL to the Supabase connection string.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   @default("compliance_officer") // compliance_officer | admin | developer
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects  Project[]
+  apiKeys   ApiKey[]
+  auditLogs AuditLog[]
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  verifications Verification[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  keyHash   String    @unique
+  keyPrefix String    // first 12 chars of the plaintext key, for display
+  name      String
+  projectId String?
+  project   Project?  @relation(fields: [projectId], references: [id])
+  ownerId   String
+  owner     User      @relation(fields: [ownerId], references: [id])
+  scopes    String    @default("verify:write,verify:read") // CSV
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  lastUsedAt DateTime?
+
+  verifications Verification[]
+}
+
+model Verification {
+  id             String    @id @default(cuid())
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id])
+  apiKeyId       String
+  apiKey         ApiKey    @relation(fields: [apiKeyId], references: [id])
+  artifactHash   String
+  artifactType   String    // code | workflow | config
+  artifactRef    String?   // path / url / filename
+  status         String    @default("pending") // pending | processing | complete | failed
+  verdict        String?   // pass | fail
+  verdictHash    String?   @unique
+  gates          String?   // JSON string of [{name,passed,detail}]
+  deployToken    String?
+  tokenExpiry    DateTime?
+  costUsd        Float?
+  modelIdentity  String?
+  source         String?   // bolt | v0 | cursor | custom
+  metadata       String?   // JSON string
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  receipt Receipt?
+}
+
+model Receipt {
+  id             String   @id @default(cuid())
+  verificationId String   @unique
+  verification   Verification @relation(fields: [verificationId], references: [id])
+  receiptJson    String   // canonical JSON, tamper-proof
+  artifactRef    String?
+  signature      String   // HMAC of receiptJson over NOETFIELD_RECEIPT_SECRET
+  createdAt      DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  actorName String   // denormalized for fast display
+  action    String   // verify.create | key.create | key.revoke | project.create | receipt.export
+  details   String?  // JSON string
+  timestamp DateTime @default(now())
+}
+
+model EnginePolicy {
+  // G5: Policy immutability — the canonical policy config is hashed and
+  // stored here. Any tampering changes the hash, breaking determinism.
+  id        String   @id @default(cuid())
+  version   Int      @unique
+  policyHash String  @unique
+  config    String   // canonical JSON of gate config
+  createdAt DateTime @default(now())
+}
+
+/**
+ * Independent Attestation — issued by the Independent Verifier.
+ *
+ * This is NOT the Noetfield receipt. This is a second-opinion signature,
+ * produced by re-fetching the receipt, re-verifying its HMAC locally with
+ * NOETFIELD_RECEIPT_SECRET, optionally re-running the gates against the
+ * artifact, and then signing the resulting attestation with a DIFFERENT
+ * secret (NOETFIELD_VERIFIER_SECRET).
+ *
+ * The point: an investor or auditor can see two independent signatures on
+ * the same verdict — Noetfield's, and the Verifier's. Neither can fake the
+ * other.
+ */
+model IndependentAttestation {
+  id              String   @id @default(cuid())
+  verdictHash     String   // links back to Verification.verdictHash
+  verified        Boolean  // did the verifier confirm the verdict?
+  signatureValid  Boolean  // did the receipt HMAC check out?
+  gatesRecomputed Boolean  // did the verifier re-run the gates itself?
+  gatesMatched    Boolean  // if recomputed, did they match?
+  attestationJson String   // canonical JSON of the attestation
+  attestationSig  String   // HMAC-SHA256(VERIFIER_SECRET, attestationJson)
+  verifierId      String   // e.g. "independent-verifier-v1"
+  createdAt       DateTime @default(now())
+
+  @@index([verdictHash])
+}
+
+/**
+ * Sina's persistent memory — survives restart.
+ *
+ * After a restart, the autonomous loop reads the last row to reconstruct
+ * context: which step it was on, what the last verdict was, what the next
+ * action should be. NO new founder prompt required.
+ *
+ * Each row is one step of the loop: action attempted + result + receipt
+ * reference. The loop's "next action" is derived from the prior row's
+ * result, not from a human.
+ */
+model SinaMemory {
+  id            String   @id @default(cuid())
+  step          Int      // monotonically increasing within a domino run
+  dominoRun     Int      // which domino (1 = first loop, 2 = second loop)
+  action        String   // e.g. "submit_artifact", "verify", "issue_receipt", "next_action"
+  actionInput   String?  // JSON of what was submitted
+  verdictHash   String?  // if a verification was produced
+  artifactHash  String?
+  result        String   // "pass" | "fail" | "pending" | "aborted"
+  nextAction    String?  // what Sina will do next WITHOUT a new prompt
+  timestamp     DateTime @default(now())
+
+  @@index([dominoRun, step])
+}
+
+/**
+ * NextActionCandidate — Sina's real work queue.
+ *
+ * In production this table is populated by Sina's evidence pipeline:
+ * Sina reads business evidence from Supabase → DeepSeek proposes a
+ * NextActionCandidate → the candidate lands here → the autonomous loop
+ * picks it up, verifies it, and either passes (→ receipt + GitHub commit)
+ * or fails (→ DeepSeek fix → retry).
+ *
+ * In sandbox: we seed this table with the same 3 candidates that were
+ * hardcoded before, so the loop contract is identical.
+ *
+ * Status lifecycle: pending → processing → passed | failed | aborted
+ */
+model NextActionCandidate {
+  id             String    @id @default(cuid())
+  step           Int       // ordering within the queue (lower = earlier)
+  label          String    // human-readable description
+  artifact       String    // the proposed code/config/workflow
+  artifactType   String    // code | workflow | config
+  source         String    // bolt | v0 | cursor | custom
+  modelIdentity  String?   // which model proposed this (e.g. deepseek-coder-v2)
+  evidence       String?   // JSON: the business evidence that triggered this candidate
+  status         String    @default("pending") // pending | processing | passed | failed | aborted
+  verdictHash    String?   // set when a verification is produced
+  artifactHash   String?
+  attemptCount   Int       @default(0)
+  githubBranch   String?   // set when a real GitHub commit is made
+  githubCommitSha String?
+  githubUrl      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  processedAt    DateTime?
+
+  @@index([status, step])
+}
+
+/** Passwordless email confirmation; codes never stored in plaintext. */
+model EmailLoginChallenge {
+  email       String   @id
+  codeHash    String
+  attempts    Int      @default(0)
+  requestedAt DateTime @default(now())
+  expiresAt   DateTime
+  name        String?
+  companyName String?
+}

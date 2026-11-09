@@ -1,0 +1,29 @@
+{
+  "name": "@noetfield/sdk",
+  "version": "1.0.0",
+  "description": "Official Noetfield Verification Layer SDK. Cryptographic proof that your AI agent's code is safe to deploy.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": ["noetfield", "ai-agent", "verification", "deploy-token", "soc2", "eu-ai-act", "cloudflare"],
+  "license": "MIT",
+  "author": "Noetfield Systems",
+  "homepage": "https://noetfield.com",
+  "repository": { "type": "git", "url": "https://github.com/noetfield/sdk-js" },
+  "engines": { "node": ">=18" },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

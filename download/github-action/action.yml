@@ -1,0 +1,63 @@
+name: 'Noetfield Verify'
+description: 'Verify AI-generated artifacts with the Noetfield Verification Layer. Blocks PR merge when verification fails.'
+author: 'Noetfield Systems'
+branding:
+  icon: 'shield'
+  color: 'green'
+inputs:
+  api-key:
+    description: 'Noetfield API key (nf_live_...). Store as a secret.'
+    required: true
+  artifact:
+    description: 'Path to the file or directory to verify.'
+    required: true
+  project-id:
+    description: 'Noetfield project ID.'
+    required: true
+  source:
+    description: 'Source of the artifact: bolt | v0 | cursor | custom'
+    required: false
+    default: 'custom'
+  artifact-type:
+    description: 'Artifact type: code | workflow | config'
+    required: false
+    default: 'code'
+  recursive:
+    description: 'For directories: include subdirectories.'
+    required: false
+    default: 'true'
+  block-on-fail:
+    description: 'Fail the job (exit 1) when verification fails.'
+    required: false
+    default: 'true'
+  base-url:
+    description: 'Override the Noetfield API base URL (for self-hosted).'
+    required: false
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Noetfield CLI
+      shell: bash
+      run: npm install -g @noetfield/cli@latest
+
+    - name: Verify artifact
+      shell: bash
+      env:
+        NOETFIELD_API_KEY: ${{ inputs.api-key }}
+      run: |
+        set -e
+        echo "::group::Noetfield Verification"
+        args="--api-key $NOETFIELD_API_KEY"
+        args="$args --project-id ${{ inputs.project-id }}"
+        args="$args --source ${{ inputs.source }}"
+        args="$args --artifact-type ${{ inputs.artifact-type }}"
+        if [ "${{ inputs.recursive }}" = "true" ]; then args="$args --recursive"; fi
+        if [ "${{ inputs.block-on-fail }}" = "true" ]; then args="$args --block-on-fail"; fi
+        if [ -n "${{ inputs.base-url }}" ]; then args="$args --base-url ${{ inputs.base-url }}"; fi
+        noetfield verify "${{ inputs.artifact }}" $args
+        echo "::endgroup::"

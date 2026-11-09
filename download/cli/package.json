@@ -1,0 +1,28 @@
+{
+  "name": "@noetfield/cli",
+  "version": "1.0.0",
+  "description": "Noetfield CLI — verify AI-generated artifacts from the command line.",
+  "type": "module",
+  "bin": {
+    "noetfield": "./dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": ["noetfield", "cli", "ai-agent", "verification", "deploy-token"],
+  "license": "MIT",
+  "author": "Noetfield Systems",
+  "homepage": "https://noetfield.com",
+  "repository": { "type": "git", "url": "https://github.com/noetfield/cli" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@noetfield/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

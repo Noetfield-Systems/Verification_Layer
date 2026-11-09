@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noetfield"
+version = "1.0.0"
+description = "Official Noetfield Verification Layer SDK. Cryptographic proof that your AI agent's code is safe to deploy."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Noetfield Systems" }]
+keywords = ["noetfield", "ai-agent", "verification", "deploy-token", "soc2", "eu-ai-act"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+]
+dependencies = [
+    "httpx>=0.24,<1.0",
+    "pydantic>=2.0,<3.0",
+]
+
+[project.urls]
+Homepage = "https://noetfield.com"
+Repository = "https://github.com/noetfield/sdk-py"
+Documentation = "https://noetfield.com/docs"
+
+[tool.setuptools.packages.find]
+where = ["src"]
