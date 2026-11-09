@@ -7,7 +7,7 @@ on:
         required: true
         type: string
   issues:
-    types: [opened]
+    types: [opened, edited, reopened]
 permissions:
   contents: write
   pull-requests: write
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   repair:
-    if: github.event_name == 'workflow_dispatch' || (startsWith(github.event.issue.title, '[SINA-QA]') && (github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR'))
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'issues'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
