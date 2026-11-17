@@ -33,7 +33,7 @@ export async function POST(req:NextRequest){
  try{
    const source=await fetchOriginalEvidence(input.external_workpacket_id,privateRead)
    const validated=sourceEvidenceValid(source,input)
-   const report=draftAttestation(input.external_workpacket_id,validated.digest)
+   const report=draftAttestation(input.external_workpacket_id,validated.digest,validated.trace_evidence)
    const independentlySigned=signDraftAttestation(report,independentKey)
    const payload=callbackEvent(input,validated.digest)
    const signed=signPlatformCallback(payload,signatureKey)
@@ -59,6 +59,11 @@ export async function POST(req:NextRequest){
      verifier_receipt_url:payload.verifier_receipt_url,
      independent_attestation_signature:independentlySigned,
      artifact_sha256:validated.digest,
+     run_trace_verified:validated.trace_evidence?.status==='RUNS_CONFIRMED',
+     token_usage:validated.trace_evidence ? {
+       input:validated.trace_evidence.input_tokens,output:validated.trace_evidence.output_tokens
+     }:null,
+     actual_provider_cost_minor:null,cost_accounting_state:'PROVIDER_BILLING_NOT_AVAILABLE',
      product_delivered:false,customer_accepted:false,live_cash_claimed:false,
      callback_acknowledged:true
    },{headers:{'Cache-Control':'no-store'}})
