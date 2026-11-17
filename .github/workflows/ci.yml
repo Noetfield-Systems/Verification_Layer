@@ -44,6 +44,8 @@ jobs:
         run: bun run lint
       - name: TypeScript typecheck
         run: bunx tsc --noEmit
+      - name: Verify independent paid WorkPacket draft proof and signed callback contracts
+        run: bun test tests/commercial-draft-verifier.test.ts
       - name: Next.js production bundle
         run: bun run build
       - name: Two-tenant HTTP end-to-end test
