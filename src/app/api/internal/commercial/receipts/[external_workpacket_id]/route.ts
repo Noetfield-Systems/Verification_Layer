@@ -30,7 +30,7 @@ export async function GET(_req:NextRequest,
       source_intake_id:String(item.source_intake_id||''),
       payment_event_id:String(item.payment_event_id||'')
    })
-   const report=draftAttestation(external_workpacket_id,match.digest)
+   const report=draftAttestation(external_workpacket_id,match.digest,match.trace_evidence)
    return NextResponse.json({
      ...report,
      independent_signature:signDraftAttestation(report,independentSecret),

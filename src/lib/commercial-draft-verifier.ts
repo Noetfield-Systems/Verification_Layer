@@ -54,6 +54,64 @@ export function sha256(input:string):string {
  return createHash('sha256').update(input,'utf8').digest('hex')
 }
 
+export type VerifiedRunTrace={
+ status:'RUNS_CONFIRMED'
+ source:'CANONICAL_COMPANY_OS_COMPLETED_RUNS'
+ run_ids:string[]
+ input_tokens:number
+ output_tokens:number
+ cost_accounting_state:'PROVIDER_BILLING_NOT_AVAILABLE'
+ provider_cost_minor:null
+ currency:null
+}
+
+export function traceEvidenceValid(artifact:JsonRecord):VerifiedRunTrace|undefined {
+ const trace=artifact.execution_trace
+ // Historical paid drafts may predate trace capture; never claim a trace
+ // for them, but preserve compatibility with their original signed proofs.
+ if(trace===undefined)return undefined
+ if(!record(trace)||trace.source!=='CANONICAL_COMPANY_OS_COMPLETED_RUNS'||
+    !Array.isArray(trace.runs)||trace.runs.length!==2||
+    trace.provider_cost_minor!==null||trace.currency!==null||
+    trace.cost_accounting_state!=='PROVIDER_BILLING_NOT_AVAILABLE')
+   throw Error('UNTRUSTED_EXECUTION_TRACE_OR_BILLING_CLAIM')
+ const agents=artifact.agent_results
+ if(!Array.isArray(agents)||agents.length!==2)throw Error('TRACE_REQUIRES_TWO_AGENTS')
+ let input=0,output=0
+ const ids:string[]=[]
+ const roles=new Set<string>()
+ for(const run of trace.runs) {
+  if(!record(run)||typeof run.run_id!=='string'||run.run_id.length<12||
+     typeof run.task_id!=='string'||run.task_id.length<12||
+     !['engineering_operator','risk_governance'].includes(String(run.role||''))||
+     run.provider!=='openai-compatible'||run.status!=='completed'||
+     typeof run.model!=='string'||run.model.length<2||
+     typeof run.started_at!=='string'||!run.started_at||
+     typeof run.finished_at!=='string'||!run.finished_at||
+     (typeof run.input_tokens!=='number'||!Number.isSafeInteger(run.input_tokens)||run.input_tokens<0)||
+     (typeof run.output_tokens!=='number'||!Number.isSafeInteger(run.output_tokens)||run.output_tokens<0))
+    throw Error('INVALID_CANONICAL_RUN_TRACE')
+  if(ids.includes(run.run_id)||roles.has(String(run.role)))
+    throw Error('DUPLICATE_MODEL_RUN_OR_ROLE')
+  const linked=agents.find(x=>record(x)&&x.task_id===run.task_id&&x.role===run.role)
+  if(!record(linked)||linked.run_id!==run.run_id||linked.model!==run.model||
+     linked.provider!==run.provider||linked.input_tokens!==run.input_tokens||
+     linked.output_tokens!==run.output_tokens)
+    throw Error('MODEL_RUN_NOT_BOUND_TO_AGENT_ARTIFACT')
+  ids.push(run.run_id)
+  roles.add(String(run.role))
+  input+=Number(run.input_tokens)
+  output+=Number(run.output_tokens)
+ }
+ if(input!==trace.total_input_tokens||output!==trace.total_output_tokens||
+    roles.size!==2||!roles.has('engineering_operator')||!roles.has('risk_governance'))
+   throw Error('RUN_TRACE_TOKEN_TOTAL_MISMATCH')
+ return {status:'RUNS_CONFIRMED',source:'CANONICAL_COMPANY_OS_COMPLETED_RUNS',
+   run_ids:ids,input_tokens:input,output_tokens:output,
+   cost_accounting_state:'PROVIDER_BILLING_NOT_AVAILABLE',
+   provider_cost_minor:null,currency:null}
+}
+
 export function sourceEvidenceValid(data:unknown,wanted:DraftRequest){
  if(!record(data)||data.schema!=='noetfield.company-os-artifact-verification-input.v1'||
    data.workpacket_id!==wanted.external_workpacket_id||data.source_intake_id!==wanted.source_intake_id||
@@ -72,6 +130,7 @@ export function sourceEvidenceValid(data:unknown,wanted:DraftRequest){
    artifact.work_product_stage!=='INTERNAL_REVIEW_READY_NOT_DEPLOYED'||
    artifact.product_delivered!==false||artifact.customer_accepted!==false||
    artifact.independent_verification!==false)throw Error('UNTRUSTED_WORK_PRODUCT_CLAIMS')
+ const traceEvidence=traceEvidenceValid(artifact)
  const digest=sha256(canonicalJson(artifact))
  if(digest!==data.artifact_sha256)throw Error('ORIGINAL_ARTIFACT_HASH_MISMATCH')
  if(!Array.isArray(artifact.agent_results)||artifact.agent_results.length!==2)
@@ -94,7 +153,7 @@ export function sourceEvidenceValid(data:unknown,wanted:DraftRequest){
  return {digest,gate_checks:[
    'SOURCE_AND_PAYMENT_BINDING','CONTENT_HASH_MATCH','ENGINEERING_MODEL_RUN',
    'RISK_REVIEW_MODEL_RUN','CUSTOMER_DELIVERY_NOT_CLAIMED'
- ],full_delivery_verified:false}
+ ],full_delivery_verified:false,trace_evidence:traceEvidence}
 }
 
 export async function fetchOriginalEvidence(externalId:string,secret:string):Promise<unknown>{
@@ -109,7 +168,7 @@ export async function fetchOriginalEvidence(externalId:string,secret:string):Pro
  return JSON.parse(raw) as unknown
 }
 
-export function draftAttestation(externalId:string,digest:string){
+export function draftAttestation(externalId:string,digest:string,trace?:VerifiedRunTrace){
  const checks=['SOURCE_AND_PAYMENT_BINDING','CONTENT_HASH_MATCH','ENGINEERING_MODEL_RUN',
    'RISK_REVIEW_MODEL_RUN','CUSTOMER_DELIVERY_NOT_CLAIMED']
  return {
@@ -120,6 +179,7 @@ export function draftAttestation(externalId:string,digest:string){
   independent_from_company_os:true,
   customer_deliverable_verified:false,
   deployed_product_verified:false,
+  ...(trace ? {execution_trace:trace,run_trace_verified:true} : {}),
  }
 }
 
