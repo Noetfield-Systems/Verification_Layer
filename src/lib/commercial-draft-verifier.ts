@@ -88,8 +88,8 @@ export function traceEvidenceValid(artifact:JsonRecord):VerifiedRunTrace|undefin
      typeof run.model!=='string'||run.model.length<2||
      typeof run.started_at!=='string'||!run.started_at||
      typeof run.finished_at!=='string'||!run.finished_at||
-     !Number.isSafeInteger(run.input_tokens)||Number(run.input_tokens)<0||
-     !Number.isSafeInteger(run.output_tokens)||Number(run.output_tokens)<0)
+     (typeof run.input_tokens!=='number'||!Number.isSafeInteger(run.input_tokens)||run.input_tokens<0)||
+     (typeof run.output_tokens!=='number'||!Number.isSafeInteger(run.output_tokens)||run.output_tokens<0))
     throw Error('INVALID_CANONICAL_RUN_TRACE')
   if(ids.includes(run.run_id)||roles.has(String(run.role)))
     throw Error('DUPLICATE_MODEL_RUN_OR_ROLE')
