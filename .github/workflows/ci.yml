@@ -46,6 +46,8 @@ jobs:
         run: bunx tsc --noEmit
       - name: Verify independent paid WorkPacket draft proof and signed callback contracts
         run: bun test tests/commercial-draft-verifier.test.ts
+      - name: Verify independently replayed native RWA Clinic 9-plus-1 paid technical report
+        run: bun test tests/commercial-rwa-verifier.test.ts
       - name: Next.js production bundle
         run: bun run build
       - name: Two-tenant HTTP end-to-end test
