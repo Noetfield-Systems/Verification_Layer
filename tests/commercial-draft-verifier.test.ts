@@ -81,3 +81,64 @@ test('only exact strict platform source payload and scoped bearer key are valid'
  expect(()=>validateDraftRequest({...req,source_intake_id:'DEMO-INT-01'})).toThrow()
  expect(()=>validateDraftRequest({...req,engine:'RWA_CLINIC'})).toThrow()
 })
+
+function traceBoundOriginal(){
+ const data=original()
+ const agents=artifact.agent_results.map((a,i)=>({
+   ...a,run_id:'run_canonical_worker_'+(i+1)+'_123456',
+   model:'provider-actual-model',input_tokens:90+i*10,output_tokens:30+i*5
+ }))
+ const runs=agents.map((a,i)=>({
+   run_id:a.run_id,task_id:a.task_id,role:a.role,provider:'openai-compatible',
+   model:a.model,status:'completed',input_tokens:a.input_tokens,output_tokens:a.output_tokens,
+   started_at:'2026-11-17T12:01:00Z',finished_at:'2026-11-17T12:02:00Z'
+ }))
+ const traced={
+   ...artifact,agent_results:agents,
+   execution_trace:{
+    source:'CANONICAL_COMPANY_OS_COMPLETED_RUNS',runs,
+    total_input_tokens:190,total_output_tokens:65,
+    provider_cost_minor:null,currency:null,
+    cost_accounting_state:'PROVIDER_BILLING_NOT_AVAILABLE'
+   }
+ }
+ return {...data,artifact:traced,artifact_sha256:sha256(canonicalJson(traced))}
+}
+
+test('actual two-provider-run trace and token usage are bound to signed independent draft receipt',()=>{
+ const result=sourceEvidenceValid(traceBoundOriginal(),req)
+ expect(result.trace_evidence?.status).toBe('RUNS_CONFIRMED')
+ expect(result.trace_evidence?.input_tokens).toBe(190)
+ expect(result.trace_evidence?.output_tokens).toBe(65)
+ expect(result.trace_evidence?.provider_cost_minor).toBeNull()
+ const signed=draftAttestation(req.external_workpacket_id,result.digest,result.trace_evidence)
+ expect(signed.run_trace_verified).toBe(true)
+ expect(signed.execution_trace?.run_ids).toHaveLength(2)
+ expect(signDraftAttestation(signed,'separate-independent-verifier-secret-1234567890')).toHaveLength(64)
+ expect(signed.deployed_product_verified).toBe(false)
+})
+
+test('reject falsified token totals, mismatched model run, billing claim or duplicated run identifiers',()=>{
+ const originalWithTrace=traceBoundOriginal()
+ function mutated(edit:(x:any)=>void){
+   const payload=structuredClone(originalWithTrace) as any
+   edit(payload.artifact)
+   payload.artifact_sha256=sha256(canonicalJson(payload.artifact))
+   return payload
+ }
+ for(const forged of [
+   mutated(a=>{a.execution_trace.total_input_tokens=99999}),
+   mutated(a=>{a.execution_trace.runs[0].run_id='run_unrelated_fake_987654321'}),
+   mutated(a=>{a.execution_trace.runs[1].run_id=a.execution_trace.runs[0].run_id}),
+   mutated(a=>{a.execution_trace.provider_cost_minor=0}),
+   mutated(a=>{a.execution_trace.runs[0].status='blocked'}),
+   mutated(a=>{a.agent_results[0].model='different-unrecorded-model'}),
+ ]) expect(()=>sourceEvidenceValid(forged,req)).toThrow()
+})
+
+test('legacy draft without actual run records is not mislabeled as verified trace',()=>{
+ const result=sourceEvidenceValid(original(),req)
+ expect(result.trace_evidence).toBeUndefined()
+ const signed=draftAttestation(req.external_workpacket_id,result.digest,result.trace_evidence)
+ expect('run_trace_verified' in signed).toBe(false)
+})
